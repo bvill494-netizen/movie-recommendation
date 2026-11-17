@@ -1,15 +1,16 @@
 
-"""CineCompass: TMDB movie search plus explainable hybrid recommendations."""
+"""CineCompass movie discovery website."""
 
 import os
-from pathlib import Path
 from datetime import date, timedelta
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 from query_parser import parse_query
 from topic_search import discover_for_query
+
 from recommender import (
     cast_names,
     director_names,
@@ -17,6 +18,7 @@ from recommender import (
     polarity,
     rank_movies,
 )
+
 from tmdb_client import (
     TMDBError,
     details,
@@ -31,21 +33,23 @@ from tmdb_client import (
     us_certification,
 )
 
-# -------------------------------
-# WEBSITE CONFIGURATION
-# -------------------------------
+
+# --------------------------------
+# PAGE SETTINGS
+# --------------------------------
 
 st.set_page_config(
     page_title="CineCompass | Movie Discovery",
     page_icon="🎬",
-    layout="wide",
+    layout="wide"
 )
 
-# -------------------------------
-# CUSTOM WEBSITE DESIGN
-# -------------------------------
 
-st.markdown("""
+# --------------------------------
+# WEBSITE DESIGN - HTML FIXED
+# --------------------------------
+
+st.html("""
 <style>
 .cine-hero {
     padding: clamp(1.3rem, 4vw, 2.5rem);
@@ -57,7 +61,11 @@ st.markdown("""
             rgba(248,113,113,.20),
             transparent 42%
         ),
-        linear-gradient(120deg, #1c293c 0%, #111927 78%);
+        linear-gradient(
+            120deg,
+            #1c293c 0%,
+            #111927 78%
+        );
     margin-bottom: 1.2rem;
 }
 
@@ -71,14 +79,14 @@ st.markdown("""
 }
 
 .cine-hero h1 {
-    margin: 0 0 .55rem 0;
+    margin: 0 0 .55rem;
     font-size: clamp(2rem, 5vw, 3.3rem);
     letter-spacing: -.04em;
     line-height: 1.12;
     color: #f6f7fb;
 }
 
-.cine-hero p.cine-subtitle {
+.cine-subtitle {
     margin: 0;
     max-width: 45rem;
     color: #c0ccdc;
@@ -103,6 +111,7 @@ st.markdown("""
 </style>
 
 <div class="cine-hero">
+
     <p class="cine-eyebrow">
         CINECOMPASS / MOVIE DISCOVERY
     </p>
@@ -114,7 +123,8 @@ st.markdown("""
 
     <p class="cine-subtitle">
         Describe what you want to watch.
-        Discover relevant stories, fine-tune your results,
+        Discover relevant stories,
+        fine-tune your results,
         and save the ones worth watching.
     </p>
 
@@ -123,13 +133,14 @@ st.markdown("""
         <span>◉ Personal recommendations</span>
         <span>♡ Watchlist</span>
     </div>
+
 </div>
-""", unsafe_allow_html=True)
+""")
 
 
-# -------------------------------
+# --------------------------------
 # TMDB API CONNECTION
-# -------------------------------
+# --------------------------------
 
 def get_secret(name):
     try:
@@ -146,24 +157,26 @@ KEY = get_secret("TMDB_API_KEY")
 
 if not (TOKEN or KEY):
     st.error(
-        "Add your TMDB API credential in "
+        "Add your TMDB credential in "
         "Streamlit Cloud → App settings → Secrets."
     )
     st.stop()
+
 
 try:
     genre_options = {
         g["name"]: g["id"]
         for g in genres(TOKEN, KEY)
     }
+
 except TMDBError as error:
     st.error(str(error))
     st.stop()
 
 
-# -------------------------------
+# --------------------------------
 # SESSION STATE
-# -------------------------------
+# --------------------------------
 
 if "watchlist" not in st.session_state:
     st.session_state.watchlist = {}
@@ -181,22 +194,29 @@ if "seed" not in st.session_state:
     st.session_state.seed = ""
 
 
-# -------------------------------
-# MOVIE RESULT CARDS
-# -------------------------------
+# --------------------------------
+# MOVIE CARDS
+# --------------------------------
 
 def show_movies(movies, prefix):
 
     if not movies:
         st.info(
-            "No movies found. Try broadening your filters "
-            "or changing your search."
+            "No movies found. Try broadening your "
+            "filters or changing your search."
         )
         return
 
-    for start in range(0, min(len(movies), 12), 3):
+    for start in range(
+        0,
+        min(len(movies), 12),
+        3
+    ):
 
-        columns = st.columns(3, gap="medium")
+        columns = st.columns(
+            3,
+            gap="medium"
+        )
 
         for column, movie in zip(
             columns,
@@ -204,6 +224,7 @@ def show_movies(movies, prefix):
         ):
 
             with column:
+
                 with st.container(border=True):
 
                     poster = poster_url(movie)
@@ -214,38 +235,45 @@ def show_movies(movies, prefix):
                             use_container_width=True
                         )
                     else:
-                        st.info("🎞️ Poster unavailable")
+                        st.info(
+                            "🎞️ Poster unavailable"
+                        )
 
                     year = (
-                        movie.get("release_date") or ""
+                        movie.get("release_date")
+                        or ""
                     )[:4] or "—"
+
+                    rating = float(
+                        movie.get("vote_average")
+                        or 0
+                    )
+
+                    runtime = (
+                        movie.get("runtime")
+                        or "—"
+                    )
 
                     st.markdown(
                         f"**{movie.get('title') or 'Untitled'}**"
                     )
 
-                    rating = float(
-                        movie.get("vote_average") or 0
+                    st.caption(
+                        f"{year} · ⭐ {rating:.1f}/10 "
+                        f"· {runtime} min"
                     )
 
-                    runtime = movie.get("runtime") or "—"
-
                     st.caption(
-                        f"{year}  ·  ⭐ {rating:.1f}/10  ·  "
-                        f"{runtime} min"
-                    )
-
-                    names = genre_names(movie)
-
-                    st.caption(
-                        " / ".join(names[:3])
-                        if names
-                        else "Genres not listed"
+                        " / ".join(
+                            genre_names(movie)[:3]
+                        )
+                        or "Genres not listed"
                     )
 
                     mid = movie["id"]
 
-                    # Watchlist button
+                    # Watchlist buttons
+
                     if mid in st.session_state.watchlist:
 
                         if st.button(
@@ -253,6 +281,7 @@ def show_movies(movies, prefix):
                             key=f"remove-{prefix}-{mid}",
                             use_container_width=True
                         ):
+
                             del st.session_state.watchlist[mid]
                             st.rerun()
 
@@ -263,10 +292,12 @@ def show_movies(movies, prefix):
                             key=f"add-{prefix}-{mid}",
                             use_container_width=True
                         ):
+
                             st.session_state.watchlist[mid] = movie
                             st.rerun()
 
-                    # Expandable movie information
+                    # Movie details
+
                     with st.expander(
                         "Plot, cast & why it matches"
                     ):
@@ -279,7 +310,9 @@ def show_movies(movies, prefix):
                         st.caption(
                             "Director: "
                             + (
-                                ", ".join(director_names(movie))
+                                ", ".join(
+                                    director_names(movie)
+                                )
                                 or "Not listed"
                             )
                         )
@@ -287,28 +320,41 @@ def show_movies(movies, prefix):
                         st.caption(
                             "Cast: "
                             + (
-                                ", ".join(cast_names(movie))
+                                ", ".join(
+                                    cast_names(movie)
+                                )
                                 or "Not listed"
                             )
                         )
 
+                        votes = movie.get(
+                            "vote_count"
+                        ) or 0
+
                         st.caption(
                             f"US certification: "
-                            f"{us_certification(movie)} · "
-                            f"{movie.get('vote_count', 0):,} votes"
+                            f"{us_certification(movie)} "
+                            f"· {votes:,} votes"
                         )
 
-                        revenue = movie.get("revenue") or 0
+                        revenue = (
+                            movie.get("revenue")
+                            or 0
+                        )
 
                         if revenue:
                             st.caption(
                                 f"Box office: ${revenue:,.0f}"
                             )
                         else:
-                            st.caption("Box office: not listed")
+                            st.caption(
+                                "Box office: not listed"
+                            )
 
                         if movie.get("_why"):
-                            st.info(movie["_why"])
+                            st.info(
+                                movie["_why"]
+                            )
 
                         st.markdown(
                             f"[View on TMDB]"
@@ -316,9 +362,9 @@ def show_movies(movies, prefix):
                         )
 
 
-# -------------------------------
+# --------------------------------
 # NAVIGATION
-# -------------------------------
+# --------------------------------
 
 page = st.radio(
     "Browse",
@@ -329,23 +375,25 @@ page = st.radio(
         "Trending"
     ],
     horizontal=True,
-    label_visibility="collapsed",
+    label_visibility="collapsed"
 )
 
 st.divider()
 
 
-# -------------------------------
-# DISCOVER MOVIES
-# -------------------------------
+# --------------------------------
+# DISCOVER PAGE
+# --------------------------------
 
 if page == "Discover":
 
-    st.subheader("Find a movie for tonight")
+    st.subheader(
+        "Find a movie for tonight"
+    )
 
     st.caption(
-        "Start with a description. Open advanced filters "
-        "only if you want more control."
+        "Start with a description. Open advanced "
+        "filters only if you want more control."
     )
 
     with st.form("filters"):
@@ -353,31 +401,40 @@ if page == "Discover":
         query = st.text_input(
             "What are you in the mood for?",
             placeholder=(
-                "Try: race car movies, space adventures, "
-                "or a dark mystery"
+                "Try: race car movies, "
+                "space adventures, or a dark mystery"
             )
         )
 
-        gcol, lcol = st.columns([3, 1], gap="medium")
+        gcol, lcol = st.columns(
+            [3, 1],
+            gap="medium"
+        )
 
         with gcol:
+
             selected_genres = st.multiselect(
                 "Genres (optional)",
                 sorted(genre_options)
             )
 
         with lcol:
+
             genre_logic = st.selectbox(
                 "Genre matching",
                 ["OR", "AND"]
             )
 
         # Advanced filters
+
         with st.expander(
             "⚙️ Advanced filters · year, rating, cast and more"
         ):
 
-            a, b = st.columns(2, gap="large")
+            a, b = st.columns(
+                2,
+                gap="large"
+            )
 
             with a:
 
@@ -385,7 +442,10 @@ if page == "Discover":
                     "Release years",
                     1900,
                     date.today().year + 5,
-                    (1980, date.today().year + 5)
+                    (
+                        1980,
+                        date.today().year + 5
+                    )
                 )
 
                 period = st.selectbox(
@@ -479,7 +539,8 @@ if page == "Discover":
             use_container_width=True
         )
 
-    # Search logic
+    # Movie search logic
+
     if search:
 
         st.session_state.recommendations = []
@@ -491,7 +552,8 @@ if page == "Discover":
             chosen = (
                 selected_genres
                 or [
-                    g for g in parsed["genres"]
+                    g
+                    for g in parsed["genres"]
                     if g in genre_options
                 ]
             )
@@ -520,21 +582,32 @@ if page == "Discover":
 
                 start = max(
                     start,
-                    (today - timedelta(days=365)).isoformat()
+                    (
+                        today - timedelta(days=365)
+                    ).isoformat()
                 )
 
-                end = min(end, today.isoformat())
+                end = min(
+                    end,
+                    today.isoformat()
+                )
 
             elif period == "Last 5 years":
 
                 start = max(
                     start,
-                    (today - timedelta(days=1826)).isoformat()
+                    (
+                        today - timedelta(days=1826)
+                    ).isoformat()
                 )
 
-                end = min(end, today.isoformat())
+                end = min(
+                    end,
+                    today.isoformat()
+                )
 
             elif period == "Upcoming":
+
                 start = max(
                     start,
                     today.isoformat()
@@ -542,8 +615,8 @@ if page == "Discover":
 
             if start > end:
                 raise ValueError(
-                    "The release period does not overlap "
-                    "with your year range."
+                    "The release period does not "
+                    "overlap with your year range."
                 )
 
             params = {
@@ -555,8 +628,10 @@ if page == "Discover":
                     rating,
                     parsed["rating_min"] or 0
                 ),
-                "vote_count.gte": votes,
+                "vote_count.gte": votes
             }
+
+            # Genre filters
 
             if chosen:
 
@@ -571,10 +646,15 @@ if page == "Discover":
                     for g in chosen
                 )
 
+            # Language
+
             if languages[language]:
+
                 params["with_original_language"] = (
                     languages[language]
                 )
+
+            # Certification
 
             if certification != "Any":
 
@@ -583,6 +663,8 @@ if page == "Discover":
                     certification_country="US",
                     certification=certification
                 )
+
+            # Runtime
 
             if runtime == "Under 90 minutes":
 
@@ -600,9 +682,18 @@ if page == "Discover":
                 params["with_runtime.gte"] = 121
 
             # Actor and director filters
+
             people = [
-                (actor, "with_cast", "Acting"),
-                (director, "with_crew", "Directing")
+                (
+                    actor,
+                    "with_cast",
+                    "Acting"
+                ),
+                (
+                    director,
+                    "with_crew",
+                    "Directing"
+                )
             ]
 
             for person, field, department in people:
@@ -621,7 +712,11 @@ if page == "Discover":
                             f"Could not find person: {person}"
                         )
 
-                    params[field] = str(match["id"])
+                    params[field] = str(
+                        match["id"]
+                    )
+
+            # Recommendations
 
             with st.spinner(
                 "Finding the best movies for you..."
@@ -655,13 +750,20 @@ if page == "Discover":
                     )
                 )
 
-        except (TMDBError, ValueError) as error:
+        except (
+            TMDBError,
+            ValueError
+        ) as error:
+
             st.error(str(error))
 
-    # Display recommendations
+    # Show results
+
     if st.session_state.recommendations:
 
-        st.subheader("Picked for you")
+        st.subheader(
+            "Picked for you"
+        )
 
         st.caption(
             f"{len(st.session_state.recommendations)} "
@@ -699,19 +801,21 @@ if page == "Discover":
     elif search:
 
         st.info(
-            "No relevant movies found with these filters. "
-            "Try lowering the minimum rating or vote count, "
+            "No relevant movies found. "
+            "Try lowering the rating or vote threshold, "
             "expanding the years, or rephrasing your topic."
         )
 
 
-# -------------------------------
-# SIMILAR MOVIES
-# -------------------------------
+# --------------------------------
+# SIMILAR MOVIES PAGE
+# --------------------------------
 
 elif page == "Similar movies":
 
-    st.subheader("More like your favourites")
+    st.subheader(
+        "More like your favourites"
+    )
 
     st.caption(
         "Enter a movie you enjoyed and discover "
@@ -733,7 +837,9 @@ elif page == "Similar movies":
 
         if not title.strip():
 
-            st.warning("Enter a movie title.")
+            st.warning(
+                "Enter a movie title."
+            )
 
         else:
 
@@ -769,16 +875,28 @@ elif page == "Similar movies":
                     limit=20
                 )
 
-                st.session_state.similar = rank_movies(
-                    rich,
-                    mood=(polarity(movie) + 1) / 2,
-                    liked_movies=[movie],
-                    exclude_ids={movie["id"]}
+                st.session_state.similar = (
+                    rank_movies(
+                        rich,
+                        mood=(
+                            polarity(movie) + 1
+                        ) / 2,
+                        liked_movies=[movie],
+                        exclude_ids={
+                            movie["id"]
+                        }
+                    )
                 )
 
-                st.session_state.seed = movie["title"]
+                st.session_state.seed = (
+                    movie["title"]
+                )
 
-            except (TMDBError, ValueError) as error:
+            except (
+                TMDBError,
+                ValueError
+            ) as error:
+
                 st.error(str(error))
 
     if st.session_state.seed:
@@ -794,17 +912,19 @@ elif page == "Similar movies":
         )
 
 
-# -------------------------------
-# WATCHLIST
-# -------------------------------
+# --------------------------------
+# WATCHLIST PAGE
+# --------------------------------
 
 elif page == "Watchlist":
 
-    st.subheader("Your watchlist")
+    st.subheader(
+        "Your watchlist"
+    )
 
     st.caption(
-        "Your saved picks stay available during "
-        "this browser session."
+        "Your saved picks stay available "
+        "during this browser session."
     )
 
     saved = list(
@@ -813,7 +933,10 @@ elif page == "Watchlist":
 
     if saved:
 
-        show_movies(saved, "saved")
+        show_movies(
+            saved,
+            "saved"
+        )
 
         if st.button(
             "Recommend from my watchlist",
@@ -843,7 +966,11 @@ elif page == "Watchlist":
                     )
 
                 candidates = enrich(
-                    discover(params, TOKEN, KEY),
+                    discover(
+                        params,
+                        TOKEN,
+                        KEY
+                    ),
                     TOKEN,
                     KEY,
                     limit=28
@@ -868,6 +995,7 @@ elif page == "Watchlist":
                 )
 
             except TMDBError as error:
+
                 st.error(str(error))
 
         if st.session_state.watchlist_matches:
@@ -889,13 +1017,15 @@ elif page == "Watchlist":
         )
 
 
-# -------------------------------
-# TRENDING MOVIES
-# -------------------------------
+# --------------------------------
+# TRENDING PAGE
+# --------------------------------
 
 else:
 
-    st.subheader("Trending this week")
+    st.subheader(
+        "Trending this week"
+    )
 
     st.caption(
         "See what's capturing audiences' "
@@ -910,13 +1040,17 @@ else:
         try:
 
             st.session_state.trending = enrich(
-                trending(TOKEN, KEY),
+                trending(
+                    TOKEN,
+                    KEY
+                ),
                 TOKEN,
                 KEY,
                 limit=18
             )
 
         except TMDBError as error:
+
             st.error(str(error))
 
     if st.session_state.trending:
@@ -927,9 +1061,9 @@ else:
         )
 
 
-# -------------------------------
+# --------------------------------
 # FOOTER
-# -------------------------------
+# --------------------------------
 
 st.divider()
 
@@ -944,6 +1078,7 @@ st.caption(
 )
 
 if Path("assets/tmdb_logo.png").exists():
+
     st.image(
         "assets/tmdb_logo.png",
         width=130
