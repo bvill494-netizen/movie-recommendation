@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from query_parser import parse_query
+from topic_search import discover_for_query
 from recommender import cast_names, director_names, genre_names, polarity, rank_movies
 from tmdb_client import (
     TMDBError, details, discover, enrich, genres, poster_url, search_movies,
@@ -111,6 +112,7 @@ if page == "Discover":
         search = st.form_submit_button("Find my movies", type="primary")
 
     if search:
+        st.session_state.recommendations = []
         try:
             parsed = parse_query(query)
             chosen = selected_genres or [g for g in parsed["genres"] if g in genre_options]
@@ -154,8 +156,8 @@ if page == "Discover":
                         raise ValueError(f"Could not find person: {person}")
                     params[field] = str(match["id"])
             with st.spinner("Retrieving movies and computing recommendations..."):
-                candidates = discover(params, TOKEN, KEY, pages=2)
-                movies = enrich(candidates, TOKEN, KEY, limit=28)
+                candidates = discover_for_query(params, query, TOKEN, KEY)
+                movies = enrich(candidates, TOKEN, KEY, limit=36)
                 mood_value = {"Dark": 0.0, "Neutral": 0.5, "Uplifting": 1.0}[mood]
                 st.session_state.recommendations = rank_movies(movies, query=query, mood=mood_value)
         except (TMDBError, ValueError) as error:
@@ -169,7 +171,7 @@ if page == "Discover":
             st.subheader("Rating vs. runtime")
             st.scatter_chart(df, x="Runtime", y="Rating", size="Votes")
     elif search:
-        st.info("No matching movies. Reduce the constraints and search again.")
+        st.info("No relevant movies found with these filters. Try lowering the minimum rating/votes, expanding the years, or rephrasing your topic.")
 
 elif page == "Similar movies":
     st.subheader("Find similar movies")
