@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import math
+import re
+
+from topic_search import topic_terms
 from textblob import TextBlob
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -48,6 +51,26 @@ def _quality(movie: dict) -> float:
     return rating / 10 * confidence
 
 
+def _topic_evidence(movie: dict, terms: list[str]) -> float:
+    """Hard relevance gate: do not recommend an unrelated film just because it is popular."""
+    if not terms:
+        return 1.0
+    if movie.get("_topic_match"):
+        return 1.0  # Matched an exact topic keyword in TMDB discover.
+    text = movie_text(movie).lower()
+    cleaned_terms = set(terms)
+    racing = bool(cleaned_terms.intersection({"race", "races", "racing", "racer", "motorsport", "nascar", "formula"}))
+    cars = bool(cleaned_terms.intersection({"car", "cars", "racecar", "vehicle", "automobile", "driving"}))
+    if racing and cars:
+        # A generic mention of "racing against time" isn't enough.
+        race_hit = bool(re.search(r"\b(race|races|racer|racers|racing|nascar|motorsport|formula.?one|grand prix)\b", text))
+        car_hit = bool(re.search(r"\b(car|cars|vehicle|automobile|racecar|driver|driving|motor)\b", text))
+        return 0.8 if race_hit and car_hit else 0.0
+    coverage = sum(bool(re.search(r"\b" + re.escape(t) + r"(?:s|es|ing)?\b", text)) for t in set(terms))
+    required = max(1, math.ceil(len(set(terms)) * 0.6))
+    return coverage / len(set(terms)) if coverage >= required else 0.0
+
+
 def rank_movies(movies: list[dict], query: str = "", mood: float = 0.5,
                 liked_movies: list[dict] | None = None, exclude_ids: set[int] | None = None) -> list[dict]:
     """Rank a bounded TMDB candidate pool; never train on nonexistent user ratings."""
@@ -69,14 +92,22 @@ def rank_movies(movies: list[dict], query: str = "", mood: float = 0.5,
             pass
     liked_genres = set().union(*(set(genre_names(m)) for m in liked_movies)) if liked_movies else set()
     result = []
+    topic = topic_terms(query) if query.strip() else []
     for movie, similarity in zip(pool, content):
+        evidence = _topic_evidence(movie, topic)
+        if topic and evidence == 0:
+            continue
         sent = polarity(movie)
         mood_match = 1 - abs(sent - (mood * 2 - 1)) / 2
         quality = _quality(movie)
         # 2 NLP approaches explicitly blended with a confidence-adjusted rating.
-        score = 0.58 * similarity + 0.22 * mood_match + 0.20 * quality
+        score = (0.65 * similarity + 0.18 * evidence + 0.09 * mood_match + 0.08 * quality) if topic else (0.58 * similarity + 0.22 * mood_match + 0.20 * quality)
         common_genres = liked_genres.intersection(genre_names(movie))
         explanations = []
+        if topic and movie.get("_topic_match"):
+            explanations.append("Matched your topic through TMDB movie keywords")
+        elif topic:
+            explanations.append("Topic terms appear in this movie description or metadata")
         if common_genres:
             explanations.append("Shared genres: " + ", ".join(sorted(common_genres)[:3]))
         if target_text and similarity > 0.02:
