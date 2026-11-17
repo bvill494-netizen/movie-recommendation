@@ -84,7 +84,10 @@ def enrich(candidates: list[dict], token: str, key: str, limit: int = 24) -> lis
     result = []
     for movie in candidates[:limit]:
         try:
-            result.append(details(movie["id"], token, key))
+            full = details(movie["id"], token, key)
+            if movie.get("_topic_match"):
+                full["_topic_match"] = True
+            result.append(full)
         except TMDBError:
             # Individual removed/unavailable titles shouldn't crash the result screen.
             continue
@@ -103,5 +106,8 @@ def us_certification(movie: dict) -> str:
 
 
 def poster_url(movie: dict) -> str | None:
+    path = movie.get("poster_path")
+    return f"{IMAGE_BASE}{path}" if path else None
+
     path = movie.get("poster_path")
     return f"{IMAGE_BASE}{path}" if path else None
